@@ -21,8 +21,14 @@ func DecalreAndBind(
 		return nil, amqp091.Queue{}, err
 	}
 
-	durable, autoDelete, exclusive := getQueueParameters(queueType)
-	queue, err := ch.QueueDeclare(queueName, durable, autoDelete, exclusive, false, nil)
+	queue, err := ch.QueueDeclare(
+		queueName,
+		queueType == DurableQueue, // durable
+		queueType != DurableQueue, // delete when unused
+		queueType != DurableQueue, // exclusive
+		false,
+		nil)
+
 	if err != nil {
 		return nil, amqp091.Queue{}, err
 	}
@@ -33,15 +39,4 @@ func DecalreAndBind(
 	}
 
 	return ch, queue, nil
-}
-
-func getQueueParameters(queueType SimpleQueueType) (bool, bool, bool) {
-	switch queueType {
-	case DurableQueue:
-		return true, false, false
-	case TransientQueue:
-		return false, true, true
-	default:
-		return false, false, false
-	}
 }
