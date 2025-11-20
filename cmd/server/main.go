@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -51,7 +50,7 @@ func main() {
 			failOnError(err, "Failed to publish message")
 		case "quit":
 			fmt.Println("Server shutting down.")
-			os.Exit(0)
+			return
 		default:
 			fmt.Println("not impl")
 		}

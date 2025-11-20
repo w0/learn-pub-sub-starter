@@ -3,8 +3,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"os"
-	"os/signal"
 
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/bootdotdev/learn-pub-sub-starter/internal/pubsub"
@@ -32,9 +30,38 @@ func main() {
 	_, _, err = pubsub.DecalreAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+userName, routing.PauseKey, pubsub.TransientQueue)
 	failOnError(err, "Failed to declare and bind queue")
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
+	gs := gamelogic.NewGameState(userName)
 
-	log.Println("os interrupt recieved. shutting down..")
+	for {
+		input := gamelogic.GetInput()
+
+		if len(input) == 0 {
+			continue
+		}
+
+		switch input[0] {
+		case "spawn":
+			err = gs.CommandSpawn(input)
+			if err != nil {
+				fmt.Printf("Failed to spawn unit: %s\n", err)
+			}
+		case "move":
+			armyMove, err := gs.CommandMove(input)
+			if err != nil {
+				fmt.Printf("Failed to move unit: %s\n", err)
+			} else {
+				fmt.Printf("Successfully moved to %s\n", armyMove.ToLocation)
+			}
+		case "status":
+			gs.CommandStatus()
+		case "help":
+			gamelogic.PrintClientHelp()
+		case "spam":
+			fmt.Println("spamming not allowed yet!")
+		case "quit":
+			gamelogic.PrintQuit()
+			return
+		}
+	}
+
 }
