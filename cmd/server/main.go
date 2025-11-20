@@ -28,6 +28,15 @@ func main() {
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to create channel")
 
+	_, _, err = pubsub.DecalreAndBind(
+		conn,
+		"peril_topic",
+		routing.GameLogSlug,
+		routing.GameLogSlug+".*",
+		pubsub.DurableQueue,
+	)
+	failOnError(err, "Failed to create game_log channel")
+
 	gamelogic.PrintServerHelp()
 
 	for {
