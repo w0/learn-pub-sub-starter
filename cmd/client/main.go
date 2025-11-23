@@ -24,23 +24,36 @@ func main() {
 	conn, err := amqp.Dial(conStr)
 	failOnError(err, "Failed to connect to rabbit mq")
 
+	publishCh, err := conn.Channel()
+	failOnError(err, "Failed to create channel")
+
 	userName, err := gamelogic.ClientWelcome()
 	failOnError(err, "Failed to get user name")
-
-	_, _, err = pubsub.DecalreAndBind(conn, routing.ExchangePerilDirect, routing.PauseKey+"."+userName, routing.PauseKey, pubsub.TransientQueue)
-	failOnError(err, "Failed to declare and bind queue")
 
 	gs := gamelogic.NewGameState(userName)
 
 	err = pubsub.SubscribeJSON(
 		conn,
-		string(routing.ExchangePerilDirect),
-		string(routing.PauseKey)+"."+userName,
-		string(routing.PauseKey),
+		routing.ExchangePerilTopic,
+		routing.ArmyMovesPrefix+"."+gs.GetUsername(),
+		routing.ArmyMovesPrefix+".*",
+		pubsub.TransientQueue,
+		handlerMove(gs),
+	)
+	if err != nil {
+		log.Fatalf("could not subscribe to army moves: %v", err)
+	}
+	err = pubsub.SubscribeJSON(
+		conn,
+		routing.ExchangePerilDirect,
+		routing.PauseKey+"."+gs.GetUsername(),
+		routing.PauseKey,
 		pubsub.TransientQueue,
 		handlerPause(gs),
 	)
-	failOnError(err, "Failed to subscribe to pause queue")
+	if err != nil {
+		log.Fatalf("could not subscribe to pause: %v", err)
+	}
 
 	for {
 		input := gamelogic.GetInput()
@@ -59,9 +72,22 @@ func main() {
 			armyMove, err := gs.CommandMove(input)
 			if err != nil {
 				fmt.Printf("Failed to move unit: %s\n", err)
-			} else {
-				fmt.Printf("Successfully moved to %s\n", armyMove.ToLocation)
+				continue
 			}
+
+			err = pubsub.PublishJSON(
+				publishCh,
+				routing.ExchangePerilTopic,
+				routing.ArmyMovesPrefix+"."+userName,
+				armyMove,
+			)
+
+			if err != nil {
+				fmt.Printf("error publishing army move: %s\n", err)
+			}
+
+			fmt.Printf("Moved %d units to %s", len(armyMove.Units), armyMove.ToLocation)
+
 		case "status":
 			gs.CommandStatus()
 		case "help":
