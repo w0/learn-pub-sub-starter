@@ -27,7 +27,9 @@ func DecalreAndBind(
 		queueType != DurableQueue, // delete when unused
 		queueType != DurableQueue, // exclusive
 		false,
-		nil)
+		amqp091.Table{
+			"x-dead-letter-exchange": "peril_dlx",
+		})
 
 	if err != nil {
 		return nil, amqp091.Queue{}, err
