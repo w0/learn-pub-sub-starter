@@ -38,11 +38,23 @@ func main() {
 		routing.ArmyMovesPrefix+"."+gs.GetUsername(),
 		routing.ArmyMovesPrefix+".*",
 		pubsub.TransientQueue,
-		handlerMove(gs),
+		handlerMove(gs, publishCh),
 	)
 	if err != nil {
 		log.Fatalf("could not subscribe to army moves: %v", err)
 	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		string(routing.ExchangePerilTopic),
+		string(routing.WarRecognitionsPrefix),
+		string(routing.WarRecognitionsPrefix)+".*",
+		pubsub.DurableQueue,
+		handlerWar(gs),
+	)
+
+	failOnError(err, "failed subscribing to war outcomes")
+
 	err = pubsub.SubscribeJSON(
 		conn,
 		routing.ExchangePerilDirect,
