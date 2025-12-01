@@ -1,8 +1,10 @@
 package pubsub
 
 import (
+	"bytes"
+	"encoding/gob"
 	"encoding/json"
-	"log"
+	"fmt"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -20,49 +22,93 @@ func SubscribeJSON[T any](
 	exchange,
 	queueName,
 	key string,
-	queueType SimpleQueueType, // an enum to represent "durable" or "transient"
+	queueType SimpleQueueType,
 	handler func(T) AckType,
 ) error {
-	ch, _, err := DecalreAndBind(
+	return subscribe[T](
 		conn,
 		exchange,
 		queueName,
 		key,
 		queueType,
+		handler,
+		func(data []byte) (T, error) {
+			var target T
+			err := json.Unmarshal(data, &target)
+			return target, err
+		},
 	)
+}
+
+func SubscribeGob[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+) error {
+	return subscribe[T](
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+		handler,
+		func(data []byte) (T, error) {
+			buffer := bytes.NewBuffer(data)
+			decoder := gob.NewDecoder(buffer)
+			var target T
+			err := decoder.Decode(&target)
+			return target, err
+		},
+	)
+}
+
+func subscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType SimpleQueueType,
+	handler func(T) AckType,
+	unmarshaller func([]byte) (T, error),
+) error {
+	ch, queue, err := DecalreAndBind(conn, exchange, queueName, key, queueType)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not declare and bind queue: %v", err)
 	}
 
-	delivery, err := ch.Consume(queueName, "", false, false, false, false, nil)
+	msgs, err := ch.Consume(
+		queue.Name, // queue
+		"",         // consumer
+		false,      // auto-ack
+		false,      // exclusive
+		false,      // no-local
+		false,      // no-wait
+		nil,        // args
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("could not consume messages: %v", err)
 	}
 
 	go func() {
-		for msg := range delivery {
-			body := new(T)
-			err := json.Unmarshal(msg.Body, body)
+		defer ch.Close()
+		for msg := range msgs {
+			target, err := unmarshaller(msg.Body)
 			if err != nil {
-				log.Printf("Failed to unmarshel msg: %s\n", err)
+				fmt.Printf("could not unmarshal message: %v\n", err)
+				continue
 			}
-
-			msgAck := handler(*body)
-
-			switch msgAck {
+			switch handler(target) {
 			case Ack:
-				log.Printf("Message Ack\n")
-				msg.Ack(true)
+				msg.Ack(false)
 			case NackDiscard:
-				log.Printf("Message NackDiscard\n")
 				msg.Nack(false, false)
 			case NackRequeue:
-				log.Printf("Message NackRequeue\n")
 				msg.Nack(false, true)
 			}
-
 		}
 	}()
-
 	return nil
 }

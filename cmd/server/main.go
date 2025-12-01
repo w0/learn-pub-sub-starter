@@ -28,14 +28,17 @@ func main() {
 	ch, err := conn.Channel()
 	failOnError(err, "Failed to create channel")
 
-	_, _, err = pubsub.DecalreAndBind(
+	err = pubsub.SubscribeGob(
 		conn,
-		"peril_topic",
+		routing.ExchangePerilTopic,
 		routing.GameLogSlug,
 		routing.GameLogSlug+".*",
 		pubsub.DurableQueue,
+		handlerLogs(),
 	)
-	failOnError(err, "Failed to create game_log channel")
+	if err != nil {
+		log.Fatalf("could not starting consuming logs: %v", err)
+	}
 
 	gamelogic.PrintServerHelp()
 
